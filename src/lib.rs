@@ -3,6 +3,7 @@
 pub mod bench;
 pub mod bi_encoder;
 pub mod cli;
+pub mod cli_out;
 pub mod config;
 pub mod corpus;
 pub mod device;

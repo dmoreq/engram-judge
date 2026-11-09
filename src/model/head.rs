@@ -115,10 +115,14 @@ impl MultiHead {
         let k = qkv.get(1)?;
         let v = qkv.get(2)?;
         let scale = (self.head_dim as f64).powf(-0.5);
-        let scores = (q * scale)?.matmul(&k.transpose(D::Minus2, D::Minus1)?)?;
-        let weights = candle_nn::ops::softmax_last_dim(&scores)?;
-        let out = weights
-            .matmul(&v)?
+        let attended = if xs.device().is_metal() {
+            candle_nn::ops::sdpa(&q, &k, &v, None, false, scale as f32, 1.0)?
+        } else {
+            let scores = (q * scale)?.matmul(&k.transpose(D::Minus2, D::Minus1)?)?;
+            let weights = candle_nn::ops::softmax_last_dim(&scores)?;
+            weights.matmul(&v)?
+        };
+        let out = attended
             .transpose(1, 2)?
             .reshape((b, seq, d))?
             .contiguous()?;

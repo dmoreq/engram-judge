@@ -123,6 +123,12 @@ pub enum Command {
         /// Decision threshold used for precision, recall and F1
         #[arg(long, value_name = "P")]
         threshold: Option<f32>,
+        /// Token cap per side (bi-encoder checkpoints only)
+        #[arg(long, default_value_t = 512)]
+        max_len: usize,
+        /// Write the report JSON to this file as well as stdout
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
     },
     /// Report the selected device and the loaded checkpoint
     DeviceInfo,

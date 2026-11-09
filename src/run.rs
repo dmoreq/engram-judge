@@ -74,6 +74,8 @@ pub fn run(cli: Cli) -> Result<()> {
         corpus,
         iterations,
         threshold,
+        max_len,
+        out,
     } = &cli.command
     {
         let pairs = corpus::load(corpus)?;
@@ -85,11 +87,15 @@ pub fn run(cli: Cli) -> Result<()> {
                 preference,
                 dtype,
                 threshold.or(recipe.threshold).unwrap_or(0.5),
-                512,
+                *max_len,
             )?;
             bench::run_bi(&mut encoder, &pairs, *iterations, *threshold)?
         };
-        println!("{}", serde_json::to_string(&report)?);
+        let line = serde_json::to_string(&report)?;
+        if let Some(path) = out {
+            crate::cli_out::write_json(path, &line)?;
+        }
+        println!("{line}");
         return Ok(());
     }
     let (question, first, second, with_logits) =

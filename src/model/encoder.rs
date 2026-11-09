@@ -189,13 +189,21 @@ impl Attention {
         let q = apply_rope(&q, &cos, &sin)?;
         let k = apply_rope(&k, &cos, &sin)?;
         let scale = (self.head_dim as f64).powf(-0.5);
-        let att = ((q * scale)?.matmul(&k.transpose(D::Minus2, D::Minus1)?))?;
-        let att = match local_mask {
-            Some(mask) => att.broadcast_add(mask)?,
-            None => att,
+        // Global layers need no mask in the single-sequence path, so they take candle's fused
+        // SDPA kernel on Metal. It has no CPU implementation, and the sliding-window layers
+        // still need the additive band mask, so those keep the explicit softmax.
+        let out = match (xs.device().is_metal(), local_mask) {
+            (true, None) => candle_nn::ops::sdpa(&q, &k, &v, None, false, scale as f32, 1.0)?,
+            _ => {
+                let att = ((q * scale)?.matmul(&k.transpose(D::Minus2, D::Minus1)?))?;
+                let att = match local_mask {
+                    Some(mask) => att.broadcast_add(mask)?,
+                    None => att,
+                };
+                let att = candle_nn::ops::softmax_last_dim(&att)?;
+                att.matmul(&v)?
+            }
         };
-        let att = candle_nn::ops::softmax_last_dim(&att)?;
-        let out = att.matmul(&v)?;
         let out = out.transpose(1, 2)?.reshape((b, seq, d))?;
         out.apply(&self.proj)
     }

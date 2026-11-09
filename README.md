@@ -100,6 +100,12 @@ target/release/eg-laya bench --model .models/laya-multilingual \
     --candidate .tmp/candidate.json --model-size-mb 161 --tier 2
 ```
 
+`scripts/quantize_owl.py` writes F16, INT8 and INT4-group64 variants of a sentence encoder and
+`scripts/prune_owl.py` writes layer-pruned variants; `scripts/run_matrix_benchmark.py` renders
+`docs/reports/2026-11-09_owl-optimization-benchmark.md` from the measured matrix. Quantisation
+shrinks the file 7x (607 MB to 85 MB) at -0.0026 F1; layer pruning without distillation drops
+BigCloneBench F1 to the all-negative baseline and is not a usable speed lever.
+
 `scripts/make_corpus.py` regenerates the 500-pair corpus deterministically: positives differ only
 by identifier names, comments and whitespace; negatives carry exactly one semantic mutation
 (`<` to `<=`, `+` to `-`, `==` to `!=`, `&&` to `||`, and so on).

@@ -14,7 +14,9 @@ check() { # dir -> prints violations
 import pathlib, re, sys
 src = pathlib.Path(sys.argv[1])
 prim = re.compile(r"fs::write|fs::rename|OpenOptions|File::create|File::create_new|File::options|fs::copy|remove_file|remove_dir|create_dir|create_dir_all")
-allowed = {"db.rs", "doctor.rs", "journal.rs"}
+# engram-laya has no .engram store; the only runtime writer is the explicit
+# `bench --out FILE` helper.
+allowed = {"cli_out.rs"}
 bad = []
 def strip_test_modules(text):
     """Remove #[cfg(test)] mod blocks (brace-matched) before scanning."""

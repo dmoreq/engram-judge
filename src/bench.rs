@@ -24,10 +24,13 @@ pub struct BenchReport {
     pub calibrated: bool,
     pub threshold: f32,
     pub p50_ms: f64,
+    pub p90_ms: f64,
     pub p95_ms: f64,
     pub p99_ms: f64,
     pub mean_ms: f64,
     pub max_ms: f64,
+    pub throughput_pairs_per_s: f64,
+    pub rss_mb: f64,
     pub precision: f64,
     pub recall: f64,
     pub f1: f64,
@@ -76,10 +79,13 @@ pub fn run(
         calibrated: judge.threshold() != 0.5 || judge.temperature() != 1.0,
         threshold,
         p50_ms: round1(percentile(&sorted, 50.0)),
+        p90_ms: round1(percentile(&sorted, 90.0)),
         p95_ms: round1(percentile(&sorted, 95.0)),
         p99_ms: round1(percentile(&sorted, 99.0)),
         mean_ms: round1(mean_ms),
         max_ms: round1(*sorted.last().unwrap_or(&0.0)),
+        throughput_pairs_per_s: round2(1000.0 / mean_ms.max(1e-6)),
+        rss_mb: resident_mb(),
         precision,
         recall,
         f1,
@@ -127,10 +133,13 @@ pub fn run_bi(
         calibrated: false,
         threshold,
         p50_ms: round1(percentile(&sorted, 50.0)),
+        p90_ms: round1(percentile(&sorted, 90.0)),
         p95_ms: round1(percentile(&sorted, 95.0)),
         p99_ms: round1(percentile(&sorted, 99.0)),
         mean_ms: round1(mean_ms),
         max_ms: round1(*sorted.last().unwrap_or(&0.0)),
+        throughput_pairs_per_s: round2(1000.0 / mean_ms.max(1e-6)),
+        rss_mb: resident_mb(),
         precision,
         recall,
         f1,
@@ -216,6 +225,42 @@ pub fn ece(rows: &[Row], bins: usize) -> f64 {
 
 fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
+}
+
+fn round2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
+/// Peak resident set of this process in MiB. `ps` is the portable macOS reader; Linux CI falls
+/// back to `/proc/self/status`. A missing reading reports 0.0 rather than failing the run.
+pub fn resident_mb() -> f64 {
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmHWM:") {
+                if let Some(kb) = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|v| v.parse::<f64>().ok())
+                {
+                    return round2(kb / 1024.0);
+                }
+            }
+        }
+    }
+    let pid = std::process::id().to_string();
+    if let Ok(out) = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid])
+        .output()
+    {
+        if let Some(kb) = String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .next()
+            .and_then(|v| v.parse::<f64>().ok())
+        {
+            return round2(kb / 1024.0);
+        }
+    }
+    0.0
 }
 
 #[cfg(test)]

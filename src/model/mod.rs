@@ -50,8 +50,9 @@ impl LayaModel {
         // hand the tensor map to `from_tensors` instead.
         let raw = candle_core::safetensors::load(&weights, &device)
             .map_err(|e| Error::Model(format!("{}: {e}", weights.display())))?;
-        let mut tensors = HashMap::with_capacity(raw.len());
-        for (name, tensor) in raw {
+        let expanded = expand_quantized(raw)?;
+        let mut tensors = HashMap::with_capacity(expanded.len());
+        for (name, tensor) in expanded {
             tensors.insert(name, tensor.to_dtype(dtype)?);
         }
         let vb = VarBuilder::from_tensors(tensors, dtype, &device);
@@ -171,6 +172,90 @@ impl LayaModel {
         let temperature = f64::from(self.temperature().max(1e-3));
         probability_true(&logits, temperature)
     }
+}
+
+/// Rebuild dense tensors from the `q8`/`q4` + `scale` pairs written by `scripts/quantize_owl.py`.
+///
+/// Quantisation only shrinks the file: weights are restored to floating point at load, so the
+/// resident floor stays at the F16 size. Norms and other 1-D tensors are stored unquantised and
+/// pass through unchanged.
+fn expand_quantized(raw: HashMap<String, Tensor>) -> Result<HashMap<String, Tensor>> {
+    // Scale tensors are one-dimensional and small; copy them out first so the weight map can be
+    // consumed by value. Cloning the whole map instead triples peak RSS on a 580 MB checkpoint.
+    let scales: HashMap<String, Tensor> = raw
+        .iter()
+        .filter(|(name, _)| name.ends_with(".scale"))
+        .map(|(name, tensor)| (name.clone(), tensor.clone()))
+        .collect();
+    let mut out = HashMap::with_capacity(raw.len());
+    for (name, tensor) in raw {
+        if name.ends_with(".scale") {
+            continue;
+        }
+        if let Some(base) = name.strip_suffix(".q8") {
+            let scale = scales
+                .get(&format!("{base}.scale"))
+                .ok_or_else(|| Error::Model(format!("{base}: q8 without scale")))?;
+            out.insert(base.to_string(), unpack_int8(&tensor, scale)?);
+            continue;
+        }
+        if let Some(base) = name.strip_suffix(".q4") {
+            let scale = scales
+                .get(&format!("{base}.scale"))
+                .ok_or_else(|| Error::Model(format!("{base}: q4 without scale")))?;
+            out.insert(base.to_string(), unpack_int4(&tensor, scale)?);
+            continue;
+        }
+        out.insert(name, tensor);
+    }
+    Ok(out)
+}
+
+/// One signed byte per weight (stored as U8 by the exporter), one scale per output row.
+fn unpack_int8(quantized: &Tensor, scale: &Tensor) -> Result<Tensor> {
+    let (rows, cols) = quantized.dims2()?;
+    let bytes = quantized
+        .to_device(&candle_core::Device::Cpu)?
+        .to_vec2::<u8>()?;
+    let scales = scale
+        .to_device(&candle_core::Device::Cpu)?
+        .to_vec1::<f32>()?;
+    let mut values = vec![0f32; rows * cols];
+    for row in 0..rows {
+        let row_scale = scales[row];
+        for col in 0..cols {
+            values[row * cols + col] = (bytes[row][col] as i8) as f32 * row_scale;
+        }
+    }
+    Ok(Tensor::from_vec(values, (rows, cols), quantized.device())?)
+}
+
+/// Two signed nibbles per byte, low nibble first, one scale per 64-column group.
+fn unpack_int4(packed: &Tensor, scale: &Tensor) -> Result<Tensor> {
+    let (rows, half) = packed.dims2()?;
+    let cols = half * 2;
+    let groups = scale.dim(1)?;
+    let bytes = packed
+        .to_device(&candle_core::Device::Cpu)?
+        .to_vec2::<u8>()?;
+    let scales = scale
+        .to_device(&candle_core::Device::Cpu)?
+        .to_vec2::<f32>()?;
+    let mut values = vec![0f32; rows * cols];
+    for row in 0..rows {
+        for col in 0..cols {
+            let byte = bytes[row][col / 2];
+            let nibble = if col % 2 == 0 { byte & 0x0F } else { byte >> 4 };
+            let signed = if nibble >= 8 {
+                nibble as i32 - 16
+            } else {
+                nibble as i32
+            };
+            let group = col * groups / cols;
+            values[row * cols + col] = signed as f32 * scales[row][group];
+        }
+    }
+    Ok(Tensor::from_vec(values, (rows, cols), packed.device())?)
 }
 
 /// Softmax over the option markers with temperature scaling, computed in `f64`.
