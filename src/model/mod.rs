@@ -2,6 +2,7 @@
 
 pub mod encoder;
 pub mod head;
+pub mod norm;
 
 use std::collections::HashMap;
 use std::path::Path;

@@ -13,15 +13,17 @@
 use std::sync::Arc;
 
 use candle_core::{DType, Device, Module, Result as CResult, Tensor, D};
-use candle_nn::{Embedding, LayerNorm, Linear, VarBuilder};
+use candle_nn::{Embedding, Linear, VarBuilder};
+
+use super::norm::FusedNorm;
 
 use crate::config::EncoderConfig;
 
 pub struct Encoder {
     embeddings: Embedding,
-    embed_norm: LayerNorm,
+    embed_norm: FusedNorm,
     layers: Vec<EncoderLayer>,
-    final_norm: LayerNorm,
+    final_norm: FusedNorm,
     local_mask: Option<Arc<Tensor>>,
     local_radius: usize,
     dtype: DType,
@@ -30,8 +32,8 @@ pub struct Encoder {
 struct EncoderLayer {
     attn: Attention,
     mlp: Mlp,
-    attn_norm: Option<LayerNorm>,
-    mlp_norm: LayerNorm,
+    attn_norm: Option<FusedNorm>,
+    mlp_norm: FusedNorm,
     local: bool,
 }
 
@@ -55,7 +57,9 @@ impl Encoder {
             cfg.hidden_size,
             vb.pp("encoder.embeddings.tok_embeddings"),
         )?;
-        let embed_norm = norm(cfg, "encoder.embeddings.norm", vb.clone())?;
+        let hidden = cfg.hidden_size;
+        let eps = cfg.layer_norm_eps;
+        let embed_norm = FusedNorm::load(vb.clone(), "encoder.embeddings.norm", hidden, eps)?;
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         for index in 0..cfg.num_hidden_layers {
             let local = !cfg.is_global_layer(index);
@@ -96,20 +100,23 @@ impl Encoder {
                 },
                 // ModernBERT keeps one post-norm layer: layer 0 ships no `attn_norm` tensor.
                 // Load it if present and fall back to the post-norm ordering otherwise.
-                attn_norm: matching_norm(
-                    cfg,
+                attn_norm: FusedNorm::load(
+                    vb.clone(),
                     &format!("encoder.layers.{index}.attn_norm"),
+                    hidden,
+                    eps,
+                )
+                .ok(),
+                mlp_norm: FusedNorm::load(
                     vb.clone(),
-                ),
-                mlp_norm: norm_no_bias(
-                    cfg,
                     &format!("encoder.layers.{index}.mlp_norm"),
-                    vb.clone(),
+                    hidden,
+                    eps,
                 )?,
                 local,
             });
         }
-        let final_norm = norm(cfg, "encoder.final_norm", vb.clone())?;
+        let final_norm = FusedNorm::load(vb.clone(), "encoder.final_norm", hidden, eps)?;
         let dtype = vb.dtype();
         Ok(Self {
             embeddings,
@@ -139,7 +146,8 @@ impl Encoder {
         } else {
             None
         };
-        let mut hidden = self.embeddings.forward(ids)?.apply(&self.embed_norm)?;
+        let mut hidden = self.embeddings.forward(ids)?;
+        hidden = self.embed_norm.forward(&hidden)?;
         for layer in &self.layers {
             let mask = if layer.local {
                 local_mask.as_deref()
@@ -148,7 +156,7 @@ impl Encoder {
             };
             hidden = layer.forward(&hidden, mask)?;
         }
-        hidden.apply(&self.final_norm)
+        self.final_norm.forward(&hidden)
     }
 }
 
@@ -156,12 +164,13 @@ impl EncoderLayer {
     fn forward(&self, xs: &Tensor, local_mask: Option<&Tensor>) -> CResult<Tensor> {
         let residual = xs.clone();
         let input = match &self.attn_norm {
-            Some(norm) => xs.apply(norm)?,
+            Some(norm) => norm.forward(xs)?,
             None => xs.clone(),
         };
         let attended = self.attn.forward(&input, local_mask)?;
         let xs = (attended + residual)?;
-        let mlp = self.mlp.forward(&xs.apply(&self.mlp_norm)?)?;
+        let normalized = self.mlp_norm.forward(&xs)?;
+        let mlp = self.mlp.forward(&normalized)?;
         &xs + mlp
     }
 }
@@ -185,7 +194,7 @@ impl Attention {
             Some(mask) => att.broadcast_add(mask)?,
             None => att,
         };
-        let att = candle_nn::ops::softmax(&att, D::Minus1)?;
+        let att = candle_nn::ops::softmax_last_dim(&att)?;
         let out = att.matmul(&v)?;
         let out = out.transpose(1, 2)?.reshape((b, seq, d))?;
         out.apply(&self.proj)
@@ -199,26 +208,6 @@ impl Mlp {
         let gate = chunks[0].gelu_erf()?;
         (&gate * &chunks[1])?.apply(&self.wo)
     }
-}
-
-fn norm(cfg: &EncoderConfig, name: &str, vb: VarBuilder) -> CResult<LayerNorm> {
-    if cfg.norm_bias {
-        candle_nn::layer_norm(cfg.hidden_size, cfg.layer_norm_eps, vb.pp(name))
-    } else {
-        candle_nn::layer_norm_no_bias(cfg.hidden_size, cfg.layer_norm_eps, vb.pp(name))
-    }
-}
-
-fn matching_norm(cfg: &EncoderConfig, name: &str, vb: VarBuilder) -> Option<LayerNorm> {
-    if cfg.norm_bias {
-        candle_nn::layer_norm(cfg.hidden_size, cfg.layer_norm_eps, vb.pp(name)).ok()
-    } else {
-        candle_nn::layer_norm_no_bias(cfg.hidden_size, cfg.layer_norm_eps, vb.pp(name)).ok()
-    }
-}
-
-fn norm_no_bias(cfg: &EncoderConfig, name: &str, vb: VarBuilder) -> CResult<LayerNorm> {
-    candle_nn::layer_norm_no_bias(cfg.hidden_size, cfg.layer_norm_eps, vb.pp(name))
 }
 
 /// Additive band mask: `0` inside `|i - j| <= radius`, `-inf` outside.

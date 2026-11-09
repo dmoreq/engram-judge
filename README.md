@@ -120,7 +120,7 @@ operator or literal):
 | --- | --- | --- | --- |
 | F1 parity | 0.7084 vs reference 0.7075 (1.001x) | 0.7424 (1.049x) | KEEP at >= 0.95x |
 | ECE | 0.2202 | 0.1047 | REJECT at > 0.12, REVIEW after tuning, KEEP needs <= 0.06 |
-| p95 latency | 174.7 ms | 174.7 ms | REJECT at > 25 ms |
+| p95 latency | 123.2 ms (174.7 before kernel fusion) | 123.2 ms | REJECT at > 25 ms |
 | footprint | 644 MB | 644 MB | REJECT at > 400 MB |
 
 Overall: **REJECT**. Fitted recipe (temperature 5.0, threshold 0.525) is written by
@@ -133,8 +133,12 @@ PyTorch FP16.
 
 | checkpoint | weights | params | p50 | p95 | F1 | ECE | worst parity delta |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `laya-multilingual` (mmBERT-base) | 644 MB | 322 M | 115.9 ms | 180.0 ms | 0.678 | 0.273 | 1e-6 |
-| `laya` (ModernBERT-large) | 843 MB | 421 M | 181.0 ms | 268.5 ms | 0.703 | 0.190 | 3e-6 |
+| `laya-multilingual` (mmBERT-base) | 644 MB | 322 M | 85.9 ms | 123.2 ms | 0.678 | 0.273 | 1e-6 |
+| `laya` (ModernBERT-large) | 843 MB | 421 M | 181.0 ms | 268.5 ms | 0.703 | 0.190 | 2e-6 |
+
+The multilingual row is the current engine after two kernel fusions (fused `softmax_last_dim`,
+fused zero-bias layer norm): p50 115.9 -> 85.9 ms, p95 180.0 -> 123.2 ms, F1 unchanged, parity
+still 1e-6. The English row predates the fusions.
 
 The English checkpoint is 1.0 F1 point better and 0.08 less over-confident; the multilingual one
 is 35% faster and 25% smaller. Both reproduce their PyTorch reference (token ids exact, |delta P|
@@ -143,6 +147,26 @@ is 35% faster and 25% smaller. Both reproduce their PyTorch reference (token ids
 Latency breakdown, measured by removing parts of the graph: 22 encoder layers ~86% (one layer
 ~3.5 ms at ~212 tokens), decision head ~5%, tokenizer/embeddings/scorer ~3%. A single-shot CLI
 invocation is 645 ms wall: 643 MB of safetensors are read and converted before the first token.
+
+### Latency research
+
+Measured on this machine unless marked *reported*.
+
+| path | change | p50 | p95 | evidence |
+| --- | --- | --- | --- | --- |
+| baseline candle Metal F16 | - | 115.9 ms | 180.0 ms | measured |
+| fused softmax + fused layer norm | 2 call sites | 85.9 ms | 123.2 ms | measured, F1 unchanged |
+| 8 of 22 encoder layers | config only | 36.0 ms | 51.0 ms | measured, F1 0.689 on this corpus |
+| MLX F16, same weights | runtime swap | ~29 ms | ~35 ms (est.) | measured encoder 23.6 ms at 172 tokens |
+| ORT CPU int8, MiniLM-L6 proxy | runtime swap | 7.4 ms @ 212 tok | 9.4 ms | measured, 12.1x fewer FLOPs than here |
+| ORT CoreML EP, same proxy | ANE path | 35.2 ms | 36.7 ms | measured; 5x slower than ORT CPU |
+| 3 MB distilled CodeBERT (Compressor, ASE 2022) | model swap | - | - | reported: 4.3x faster than CodeBERT, 99.2% of its clone F1 |
+| ModernBERT sentence-clone (CodeModernBERT-Owl) | model swap | - | - | reported: F1 0.963 on BigCloneBench, 12 layers |
+
+Arithmetic: ~40-49 GFLOP per forward. p95 <= 10 ms needs >= 4 TFLOPS sustained; candle measures
+~2.3 and MLX ~2.9 on M=172 GEMMs. The CoreML/ANE arm is not a shortcut: a 6-layer INT8 proxy ran
+5x slower under the CoreML EP than under the ORT CPU EP, because partition copies dominate at this
+model size.
 
 ### Why 10 ms is out of reach on candle
 

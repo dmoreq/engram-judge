@@ -8,7 +8,9 @@
 //! never reports.
 
 use candle_core::{Result as CResult, Tensor, D};
-use candle_nn::{LayerNorm, Linear, VarBuilder};
+use candle_nn::{Linear, VarBuilder};
+
+use super::norm::FusedNorm;
 
 pub struct DecisionHead {
     layers: Vec<HeadLayer>,
@@ -16,8 +18,8 @@ pub struct DecisionHead {
 
 struct HeadLayer {
     attn: MultiHead,
-    norm1: LayerNorm,
-    norm2: LayerNorm,
+    norm1: FusedNorm,
+    norm2: FusedNorm,
     linear1: Linear,
     linear2: Linear,
 }
@@ -30,7 +32,7 @@ struct MultiHead {
 }
 
 pub struct Scorer {
-    norm: LayerNorm,
+    norm: FusedNorm,
     first: Linear,
     second: Linear,
 }
@@ -56,8 +58,18 @@ impl DecisionHead {
                     n_heads,
                     head_dim: hidden / n_heads,
                 },
-                norm1: candle_nn::layer_norm(hidden, eps, layer_vb.pp("norm1"))?,
-                norm2: candle_nn::layer_norm(hidden, eps, layer_vb.pp("norm2"))?,
+                norm1: FusedNorm::load(
+                    vb.clone(),
+                    &format!("head.layers.{index}.norm1"),
+                    hidden,
+                    eps,
+                )?,
+                norm2: FusedNorm::load(
+                    vb.clone(),
+                    &format!("head.layers.{index}.norm2"),
+                    hidden,
+                    eps,
+                )?,
                 linear1: candle_nn::linear(hidden, hidden * 4, layer_vb.pp("linear1"))?,
                 linear2: candle_nn::linear(hidden * 4, hidden, layer_vb.pp("linear2"))?,
             });
@@ -79,10 +91,12 @@ impl DecisionHead {
 
 impl HeadLayer {
     fn forward(&self, xs: &Tensor) -> CResult<Tensor> {
-        let attended = self.attn.forward(&xs.apply(&self.norm1)?)?;
+        let normalized = self.norm1.forward(xs)?;
+        let attended = self.attn.forward(&normalized)?;
         let xs = (xs + attended)?;
-        let projected = xs
-            .apply(&self.norm2)?
+        let projected = self
+            .norm2
+            .forward(&xs)?
             .apply(&self.linear1)?
             .relu()?
             .apply(&self.linear2)?;
@@ -102,7 +116,7 @@ impl MultiHead {
         let v = qkv.get(2)?;
         let scale = (self.head_dim as f64).powf(-0.5);
         let scores = (q * scale)?.matmul(&k.transpose(D::Minus2, D::Minus1)?)?;
-        let weights = candle_nn::ops::softmax(&scores, D::Minus1)?;
+        let weights = candle_nn::ops::softmax_last_dim(&scores)?;
         let out = weights
             .matmul(&v)?
             .transpose(1, 2)?
@@ -116,7 +130,7 @@ impl Scorer {
     pub fn load(vb: VarBuilder, hidden: usize, eps: f64) -> CResult<Self> {
         let scorer = vb.pp("scorer");
         Ok(Self {
-            norm: candle_nn::layer_norm(hidden, eps, scorer.pp("0"))?,
+            norm: FusedNorm::load(scorer.clone(), "0", hidden, eps)?,
             first: candle_nn::linear(hidden, hidden, scorer.pp("1"))?,
             second: candle_nn::linear(hidden, 1, scorer.pp("3"))?,
         })
@@ -124,8 +138,8 @@ impl Scorer {
 
     /// `markers`: `(1, k, hidden)`. Returns `(1, k)` logits.
     pub fn forward(&self, markers: &Tensor) -> CResult<Tensor> {
-        markers
-            .apply(&self.norm)?
+        self.norm
+            .forward(markers)?
             .apply(&self.first)?
             .gelu_erf()?
             .apply(&self.second)?
