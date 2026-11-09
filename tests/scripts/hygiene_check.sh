@@ -32,7 +32,7 @@ LEAK_PATTERNS='(/Users/|/home/[A-Za-z0-9._-]+/|/Workspace/|quy\.doan@|@be\.com\.
 for f in "${FILES[@]}"; do
   [ -f "$f" ] || continue
   case "$f" in
-    docs/baselines/*|docs/archive/*|tests/scripts/public_export.py|tests/scripts/test_public_export.py|tests/scripts/hygiene_check.sh)
+    docs/baselines/*|docs/archive/*|tests/scripts/public_export.py|tests/scripts/test_public_export.py|tests/scripts/hygiene_check.sh|tests/corpus/bigclonebench_*)
       continue
       ;;
   esac

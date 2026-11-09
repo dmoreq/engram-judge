@@ -56,7 +56,7 @@ def main() -> int:
 
     model_dir = os.path.abspath(args.model)
     tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModel.from_pretrained(model_dir, torch_dtype=torch.float32)
+    model = AutoModel.from_pretrained(model_dir, dtype=torch.float32, attn_implementation="sdpa")
     model.eval()
 
     with open(args.corpus) as fh:
