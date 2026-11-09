@@ -126,6 +126,20 @@ operator or literal):
 Overall: **REJECT**. Fitted recipe (temperature 5.0, threshold 0.525) is written by
 `scripts/fit_calibration.py`, which fits on half the corpus and scores the other half.
 
+### Checkpoint comparison
+
+Same 200 labelled pairs, same machine, Metal F16, in-process. Reference is the same checkpoint in
+PyTorch FP16.
+
+| checkpoint | weights | params | p50 | p95 | F1 | ECE | worst parity delta |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `laya-multilingual` (mmBERT-base) | 644 MB | 322 M | 115.9 ms | 180.0 ms | 0.678 | 0.273 | 1e-6 |
+| `laya` (ModernBERT-large) | 843 MB | 421 M | 181.0 ms | 268.5 ms | 0.703 | 0.190 | 3e-6 |
+
+The English checkpoint is 1.0 F1 point better and 0.08 less over-confident; the multilingual one
+is 35% faster and 25% smaller. Both reproduce their PyTorch reference (token ids exact, |delta P|
+<= 3e-6) and both fail calibration, latency and footprint.
+
 Latency breakdown, measured by removing parts of the graph: 22 encoder layers ~86% (one layer
 ~3.5 ms at ~212 tokens), decision head ~5%, tokenizer/embeddings/scorer ~3%. A single-shot CLI
 invocation is 645 ms wall: 643 MB of safetensors are read and converted before the first token.
