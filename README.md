@@ -31,6 +31,25 @@ Both heads are identical: `head.layers.0..1`, `scorer.{0,1,3}`, `type_emb`, `tem
 
 ## Quick start
 
+The shipping artifact is `.models/owl-int4`: a 12-layer ModernBERT bi-encoder quantised to
+INT4-group64, 85 MB on disk, BigCloneBench F1 0.9592. Everything else under `.models/` was a
+benchmark arm and has been removed; `scripts/` can regenerate any of it. The three reports under
+`docs/reports/` record the measurements those arms produced.
+
+```sh
+export EG_LAYA_MODEL="$(pwd)/.models/owl-int4"
+cargo run --release -- similarity \
+    --text-a "fn total(x: &[i32]) -> i32 { x.iter().sum() }" \
+    --text-b "fn sum_all(arr: &[i32]) -> i32 { let mut s = 0; for v in arr { s += v; } s }"
+```
+
+```json
+{"decision":"duplicate","similarity":0.868,"threshold":0.5,"latency_ms":72.3,"device":"metal"}
+```
+
+The reference toolchain below is only needed to regenerate a checkpoint or a corpus; the runtime
+never imports Python.
+
 ```sh
 # 1. Reference environment (offline tooling only, never shipped)
 uv venv --python 3.12 .venv
@@ -101,10 +120,11 @@ target/release/eg-laya bench --model .models/laya-multilingual \
 ```
 
 `scripts/quantize_owl.py` writes F16, INT8 and INT4-group64 variants of a sentence encoder and
-`scripts/prune_owl.py` writes layer-pruned variants; `scripts/run_matrix_benchmark.py` renders
+`scripts/run_matrix_benchmark.py` renders
 `docs/reports/2026-11-09_owl-optimization-benchmark.md` from the measured matrix. Quantisation
-shrinks the file 7x (607 MB to 85 MB) at -0.0026 F1; layer pruning without distillation drops
-BigCloneBench F1 to the all-negative baseline and is not a usable speed lever.
+shrinks the file 7x (607 MB to 85 MB) at -0.0026 F1. Layer pruning without distillation drops
+BigCloneBench F1 to the all-negative baseline and is not a usable speed lever, so no pruning
+script ships.
 
 `scripts/make_corpus.py` regenerates the 500-pair corpus deterministically: positives differ only
 by identifier names, comments and whitespace; negatives carry exactly one semantic mutation

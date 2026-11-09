@@ -42,7 +42,9 @@ Every reference row was cross-checked against the Rust engine where the architec
 | CodeT5 clone (Salesforce), 220M | T5 + custom head | not reconstructable | not reconstructable | - | - | 850 MB |
 | normalised-token fingerprint | deterministic | 0.6813 | **0.8203** | 0.90 ms | 0.03 ms | 0 MB |
 
-Rows measured with `scripts/eval_cross_encoder.py`, `scripts/eval_siamese.py`, `scripts/eval_owl.py` and `scripts/eval_token_diff.py`; Rust rows with `eg-laya bench`. Threshold 0.5 unless the row states otherwise; best-threshold F1 is in the cited JSON under `.tmp/`.
+Rows measured with cross-encoder, siamese and bi-encoder evaluators plus `scripts/eval_token_diff.py`
+(the cross-encoder and siamese evaluators, and every checkpoint except `owl-int4`, were removed after
+the study; the weights are public and the measurements stand); Rust rows with `eg-laya bench`. Threshold 0.5 unless the row states otherwise; best-threshold F1 is in the cited JSON under `.tmp/`.
 
 ### Runtime comparison, same checkpoint
 
@@ -146,17 +148,18 @@ Failure: without a real gray-zone corpus there is nothing to distil from, and th
 # corpora
 .venv/bin/python scripts/fetch_bigclonebench.py
 
-# Rust arms
-target/release/eg-laya bench --model .models/laya-multilingual --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
-target/release/eg-laya bench --model .models/owl --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal
+# Rust arms (re-download a checkpoint first with scripts/export_laya.py or export_bi_encoder.py)
+# target/release/eg-laya bench --model .models/laya-multilingual --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
 
-# reference arms
-.venv/bin/python scripts/eval_siamese.py --model .models/codebert-clone --base roberta --pooling cls --corpus tests/corpus/bigclonebench_400.jsonl
-.venv/bin/python scripts/eval_owl.py --model .models/unixcoder-clone --corpus tests/corpus/bigclonebench_400.jsonl
+# bi-encoder arm that ships
+target/release/eg-laya bench --model .models/owl-int4 --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
+.venv/bin/python scripts/eval_owl.py --model .models/owl-int4 --corpus tests/corpus/bigclonebench_400.jsonl
+
+# tier-0 baseline
 .venv/bin/python scripts/eval_token_diff.py --corpus tests/corpus/pairs.jsonl --limit 200
 
 # parity
-EG_LAYA_MODEL=.models/owl target/release/eg-laya embed --text "fn a() {}" --model .models/owl
+EG_LAYA_MODEL=.models/owl-int4 target/release/eg-laya embed --text "fn a() {}" --model .models/owl-int4
 ```
 
 ## Files
@@ -166,8 +169,6 @@ EG_LAYA_MODEL=.models/owl target/release/eg-laya embed --text "fn a() {}" --mode
 | `src/model/encoder.rs` | ModernBERT forward, configurable weight prefix, fused norms |
 | `src/model/norm.rs` | fused layer norm for bias-free checkpoints |
 | `src/bi_encoder.rs` | pooled embedding, cosine, similarity verdict |
-| `scripts/eval_cross_encoder.py` | cross-encoder reference arm |
-| `scripts/eval_siamese.py` | per-side encoder + concat head arm |
 | `scripts/eval_owl.py` | bi-encoder reference arm |
 | `scripts/eval_token_diff.py` | deterministic tier-0 baseline |
 | `scripts/fetch_bigclonebench.py` | reproducible BigCloneBench slice |

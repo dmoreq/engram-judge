@@ -38,7 +38,8 @@ Corpora: `tests/corpus/pairs.jsonl` (500 near-miss pairs) and `tests/corpus/bigc
 ## Method
 
 - Quantisation: `scripts/quantize_owl.py` writes F16, per-row INT8 and INT4 group-64 (two signed nibbles per byte) checkpoints; the loader dequantises at load, so RSS stays at the F16 floor and the gain is disk.
-- Pruning: `scripts/prune_owl.py` keeps the first N layers and rewrites `num_hidden_layers`.
+- Pruning: a layer-slicing script kept the first N layers and rewrote `num_hidden_layers`. It was
+  removed after the study because every pruned variant failed; the result stands in the table.
 - Kernel path: candle's fused `softmax_last_dim`, zero-bias fused layer norm and Metal `sdpa` for unmasked global layers. Copying `laya-candle`'s custom Metal kernels would require `unsafe` FFI, which this repository's hygiene gate forbids in `src/`.
 - Command per row: `eg-laya bench --model .models/<variant> --corpus tests/corpus/<corpus>.jsonl --iterations 1 --device metal --dtype f16`.
 
@@ -83,8 +84,6 @@ Commands:
 
 ```sh
 .venv/bin/python scripts/quantize_owl.py --model .models/owl --formats fp16,int8,int4
-.venv/bin/python scripts/prune_owl.py --model .models/owl --layers 8,6
-.venv/bin/python scripts/prune_owl.py --model .models/owl-int4 --layers 8,6
 .venv/bin/python scripts/run_matrix_benchmark.py
 /usr/bin/time -l target/release/eg-laya bench --model .models/owl-int4 \
     --corpus .tmp/bcb50.jsonl --iterations 1 --device metal --dtype f16
