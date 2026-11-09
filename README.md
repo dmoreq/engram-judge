@@ -194,6 +194,15 @@ not settled by BigCloneBench alone.
 1000-token vocabulary but not the `BPE_1000` tokenizer that produced it, so its inputs cannot be
 reproduced from public artifacts.
 
+### Runtime floor
+
+A third-party Rust/Candle implementation of the same checkpoint (`b0xtch/laya-candle`, fused
+Metal kernels and tiled attention) runs our corpora at **29.0 ms p50 / 37.0 ms p95** on
+`tests/corpus/pairs.jsonl` and **121.8 ms / 125.2 ms** on `tests/corpus/bigclonebench_400.jsonl`,
+with identical F1 (0.7084 and 0.6755). This engine measures 79.7 ms and 544.9 ms on the same
+inputs, so kernel headroom is real and unclaimed. See
+`docs/reports/2026-11-09_eg-laya-latency-model-selection.md`.
+
 ### Why 10 ms is out of reach on candle
 
 Two independent reviews were run because the latency gate was failing.

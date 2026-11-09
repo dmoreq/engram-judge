@@ -5,7 +5,11 @@ Revision: `34f504d` plus this report (repo `engram-laya`)
 
 ## TL;DR
 
-At ~212 tokens the judge executes ~46.8 GFLOP per call, so a p95 of 10 ms needs 4.7 TFLOPS sustained; the two runtimes measured here deliver 2.3 (candle) and 2.9 (MLX) TFLOPS. Kernel fusion cut p95 from 180.0 ms to 123.2 ms with parity unchanged, and no further runtime-only change reaches the gate. Model quality depends entirely on the distribution: a clone-trained bi-encoder scores 0.962 F1 on BigCloneBench and 0.689 on near-miss pairs, while a normalised-token fingerprint runs in 0.03 ms and scores 0.820 on the near-miss set. The decision below is therefore about which tier owns which traffic, not about picking one model.
+A third-party Rust/Candle implementation with fused Metal kernels runs the same checkpoint at 29.0 ms p50 / 37.0 ms p95 on the short corpus and 121.8 ms / 125.2 ms on BigCloneBench, with identical F1 and probabilities: this engine is 2.7-3.3x slower than the available floor. Quality still depends on the distribution (0.962 F1 on BigCloneBench vs 0.689 on near-miss for the best bi-encoder), and the normalised-token fingerprint remains the only arm that clears 0.82 on near-miss, at 0.03 ms. The decision is therefore two decisions: adopt the faster kernel path, and assign traffic between the deterministic and neural tiers.
+
+## Retraction
+
+An earlier version of this report stated that "runtime work is exhausted at ~86 ms p50". That claim is withdrawn. It was produced only from this repository's own kernels and from a kernel-count argument, not from a same-weights comparison against another Rust implementation. Measured on the same corpus and the same checkpoint, `b0xtch/laya-candle` reaches 29.0 ms p50 (short) and 121.8 ms (BigCloneBench) against 79.7 ms and 544.9 ms here, with F1 0.7084 and 0.6755 in both. The fusion headroom was real, and this repository left it unclaimed.
 
 ## Scope and method
 
@@ -40,6 +44,35 @@ Every reference row was cross-checked against the Rust engine where the architec
 
 Rows measured with `scripts/eval_cross_encoder.py`, `scripts/eval_siamese.py`, `scripts/eval_owl.py` and `scripts/eval_token_diff.py`; Rust rows with `eg-laya bench`. Threshold 0.5 unless the row states otherwise; best-threshold F1 is in the cited JSON under `.tmp/`.
 
+### Runtime comparison, same checkpoint
+
+Both Rust rows run the same `laya-multilingual` weights, the same prompt layout and the same
+question; only the kernels differ. Both report F1 from an identical scoring rule.
+
+| runtime | corpus | p50 | p95 | F1 |
+| --- | --- | ---: | ---: | ---: |
+| this repo, candle 0.11 with fused norm and softmax | `pairs.jsonl` (500) | 79.7 ms | 120.3 ms | 0.7084 |
+| `b0xtch/laya-candle`, fused Metal kernels + tiled attention | `pairs.jsonl` (500) | **29.0 ms** | **37.0 ms** | 0.7084 |
+| `laya-mlx` 0.6.0, MLX FP16 | `pairs.jsonl` (200) | 81.6 ms | 135.3 ms | 0.7027 |
+| this repo | `bigclonebench_400` | 544.9 ms | 604.4 ms | 0.6755 |
+| `b0xtch/laya-candle` | `bigclonebench_400` | **121.8 ms** | **125.2 ms** | 0.6755 |
+| `laya-mlx` 0.6.0 | `bigclonebench_400` (200) | 189.0 ms | 3043.7 ms | 0.6734 |
+
+`laya-candle` moves from 2.7x to 4.5x faster as the sequence grows, which is the signature of
+tiled attention and a tuned GEMM dispatch rather than a constant per-call saving. Its p95 stays
+within 4 ms of its p50 on both corpora; the MLX arm instead shows a 3 s tail on long inputs,
+consistent with its window-batching policy.
+
+### Third-party claims, measured
+
+| claim | artifact | measured here | verdict |
+| --- | --- | --- | --- |
+| 7.4 ms for a short multilingual decision | `laya-mlx` 0.6.0, README benchmark on M3 Max | 81.6 ms p50 on 200 short pairs | true only for a much shorter state; same checkpoint on our pairs is 11x slower |
+| ~15-18 ms for Von with the model resident | `Partysun/jigor` + `Zatsepin/von-onnx-fp16` | 933.8 ms p50, F1 0.5905 | not reproducible on this machine through the shipped gateway |
+| Kev-0.8B at 20-35 ms | `jaredpalmer/kev` model card | not run; the card's own Apple Silicon row reports 74 ms/decision at 8k context | claim conflicts with the project's own published Mac number |
+| Laya in ONNX via jigor | `Mattepiu/laya-onnx` | 563.7 ms p50, F1 0.6412 | slower than both Rust paths |
+| `laya-candle` "fused kernels tuned for M1 Pro" | `b0xtch/laya-candle` | 29.0 ms / 121.8 ms, same F1 | confirmed |
+
 ### Why some rows are missing
 
 The released artifacts are not self-contained, and that is itself a finding:
@@ -68,7 +101,8 @@ Arithmetic for the gate: 22 layers x 10.03 MFLOP per token per layer x 212 token
 2. **Quality is distribution-bound.** The same bi-encoder moves from 0.962 to 0.689 F1 between real clones and near-miss pairs. Pooled sentence vectors erase the single-token difference that separates those pairs.
 3. **Deterministic tier-0 wins on near-miss by 30x latency and +0.13 F1.** Normalised-token comparison answers in 0.03 ms with F1 0.820 versus 0.689 for the best neural arm.
 4. **Tier-0 has a known blind spot.** Identifier normalisation turns `clearTimeout` into `clearInterval` and `sha256` into `sha1`; those mutations are invisible to any Type-2 comparison. Resolving them needs symbol information, which the `engram` code graph already holds.
-5. **ANE is not a shortcut.** The CoreML EP ran a 6-layer INT8 proxy 5x slower than the ORT CPU EP because graph partitioning and copies dominate at this model size.
+5. **A 2.7-4.5x faster Rust path already exists.** `laya-candle` keeps upstream parity and beats this engine on both corpora, so kernel work is not exhausted and the earlier claim is withdrawn.
+6. **ANE is not a shortcut.** The CoreML EP ran a 6-layer INT8 proxy 5x slower than the ORT CPU EP because graph partitioning and copies dominate at this model size.
 
 ## Options
 
@@ -83,6 +117,14 @@ Failure: Type-4 rewrites (different control flow, same behaviour) fall through t
 Mechanism: Owl-style 12-layer bi-encoder encodes each side once; the snippet index caches vectors so a comparison is a dot product; tier-0 handles exact and near-exact pairs first.
 Cost: 606 MB F32 or ~160 MB INT8, 43.7 ms p50 for an uncached pair, ~22 ms per side once cached; the Rust encode/cosine path already exists.
 Failure: near-miss operator changes stay at 0.689 F1, and the 160 MB INT8 artifact still exceeds the 80 MB Tier-2 cap.
+
+**Option D: vendor the faster kernel path.**
+Mechanism: adopt `b0xtch/laya-candle` (Apache-2.0 AND MIT) as the inference backend, or port its
+`fused.metal`, tiled attention and GEMM dispatch into `src/model`; keep this repo's CLI, corpus,
+bench and verdict schema.
+Cost: a dependency on a 0.1.0 crate pinned by git revision, or ~600 lines of kernel work; no model
+change and no parity risk.
+Failure: the crate is experimental and not on crates.io, so a breaking change means a local fork.
 
 **Option C: distill a small cross-encoder.**
 Mechanism: teacher is the best BigCloneBench cross-encoder measured here (CodeBERT siamese, 0.9442); labels come from real near-miss cases in `engram`; student is a 4-6 layer, 384-hidden cross-encoder in the Compressor shape (3-25 MB).
