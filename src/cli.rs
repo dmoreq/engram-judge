@@ -79,6 +79,39 @@ pub enum Command {
         #[arg(long)]
         with_logits: bool,
     },
+    /// Compare two texts with a bi-encoder checkpoint (cosine similarity)
+    Similarity {
+        /// First text passed inline
+        #[arg(long, value_name = "TEXT", conflicts_with = "text_a_file")]
+        text_a: Option<String>,
+        /// Second text passed inline
+        #[arg(long, value_name = "TEXT", conflicts_with = "text_b_file")]
+        text_b: Option<String>,
+        /// Read the first text from a file
+        #[arg(long, value_name = "FILE")]
+        text_a_file: Option<PathBuf>,
+        /// Read the second text from a file
+        #[arg(long, value_name = "FILE")]
+        text_b_file: Option<PathBuf>,
+        /// Cosine threshold for the duplicate call
+        #[arg(long, value_name = "P")]
+        threshold: Option<f32>,
+        /// Token cap per side
+        #[arg(long, default_value_t = 512)]
+        max_len: usize,
+    },
+    /// Print the pooled, L2-normalised embedding of one text
+    Embed {
+        /// Text passed inline
+        #[arg(long, value_name = "TEXT", conflicts_with = "text_file")]
+        text: Option<String>,
+        /// Read the text from a file
+        #[arg(long, value_name = "FILE")]
+        text_file: Option<PathBuf>,
+        /// Token cap
+        #[arg(long, default_value_t = 512)]
+        max_len: usize,
+    },
     /// Run a corpus through the judge and report latency, F1 and ECE
     Bench {
         /// JSONL corpus: {"a": "...", "b": "...", "label": 0|1, "kind": "duplicate"|"supersede"}

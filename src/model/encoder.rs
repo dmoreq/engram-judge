@@ -51,15 +51,16 @@ struct Mlp {
 }
 
 impl Encoder {
-    pub fn load(vb: VarBuilder, cfg: &EncoderConfig) -> CResult<Self> {
+    pub fn load(vb: VarBuilder, cfg: &EncoderConfig, prefix: &str) -> CResult<Self> {
         let embeddings = candle_nn::embedding(
             cfg.vocab_size,
             cfg.hidden_size,
-            vb.pp("encoder.embeddings.tok_embeddings"),
+            vb.pp(qualify(prefix, "embeddings.tok_embeddings")),
         )?;
         let hidden = cfg.hidden_size;
         let eps = cfg.layer_norm_eps;
-        let embed_norm = FusedNorm::load(vb.clone(), "encoder.embeddings.norm", hidden, eps)?;
+        let embed_norm =
+            FusedNorm::load(vb.clone(), &qualify(prefix, "embeddings.norm"), hidden, eps)?;
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         for index in 0..cfg.num_hidden_layers {
             let local = !cfg.is_global_layer(index);
@@ -68,8 +69,7 @@ impl Encoder {
             } else {
                 cfg.global_theta()
             };
-            let prefix = format!("encoder.layers.{index}");
-            let layer_vb = vb.pp(&prefix);
+            let layer_vb = vb.pp(qualify(prefix, &format!("layers.{index}")));
             layers.push(EncoderLayer {
                 attn: Attention {
                     qkv: candle_nn::linear_no_bias(
@@ -102,21 +102,21 @@ impl Encoder {
                 // Load it if present and fall back to the post-norm ordering otherwise.
                 attn_norm: FusedNorm::load(
                     vb.clone(),
-                    &format!("encoder.layers.{index}.attn_norm"),
+                    &qualify(prefix, &format!("layers.{index}.attn_norm")),
                     hidden,
                     eps,
                 )
                 .ok(),
                 mlp_norm: FusedNorm::load(
                     vb.clone(),
-                    &format!("encoder.layers.{index}.mlp_norm"),
+                    &qualify(prefix, &format!("layers.{index}.mlp_norm")),
                     hidden,
                     eps,
                 )?,
                 local,
             });
         }
-        let final_norm = FusedNorm::load(vb.clone(), "encoder.final_norm", hidden, eps)?;
+        let final_norm = FusedNorm::load(vb.clone(), &qualify(prefix, "final_norm"), hidden, eps)?;
         let dtype = vb.dtype();
         Ok(Self {
             embeddings,
@@ -207,6 +207,14 @@ impl Mlp {
         let chunks = projected.chunk(2, D::Minus1)?;
         let gate = chunks[0].gelu_erf()?;
         (&gate * &chunks[1])?.apply(&self.wo)
+    }
+}
+
+fn qualify(prefix: &str, suffix: &str) -> String {
+    if prefix.is_empty() {
+        suffix.to_string()
+    } else {
+        format!("{prefix}.{suffix}")
     }
 }
 

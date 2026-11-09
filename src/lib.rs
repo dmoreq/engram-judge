@@ -1,6 +1,7 @@
 //! `eg-laya`: native Laya `noul` judge for engram.
 
 pub mod bench;
+pub mod bi_encoder;
 pub mod cli;
 pub mod config;
 pub mod corpus;

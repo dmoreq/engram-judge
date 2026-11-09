@@ -168,6 +168,32 @@ Arithmetic: ~40-49 GFLOP per forward. p95 <= 10 ms needs >= 4 TFLOPS sustained; 
 5x slower under the CoreML EP than under the ORT CPU EP, because partition copies dominate at this
 model size.
 
+### Model-swap experiment (BigCloneBench slice)
+
+400 labelled pairs from the CodeXGLUE BigCloneBench test split (204 clones, 196 non-clones),
+same machine, Metal F16, in-process. `eg-laya bench` runs the judge when the checkpoint has a
+decision head and the bi-encoder when it does not.
+
+| arm | BigCloneBench F1 | synthetic near-miss F1 | p50 (BCB) | p50 (short pair) | weights |
+| --- | --- | --- | --- | --- | --- |
+| Laya `noul` judge, 22 layers | 0.676 | 0.678 | 544.9 ms | 85.9 ms | 644 MB |
+| CodeCloneDetection-ModernBERT-Owl, 12 layers bi-encoder | **0.962** | 0.689 | 148.3 ms | 43.7 ms | 606 MB F32 |
+| Owl in PyTorch (reference) | 0.962 | 0.689 | 149.7 ms (pair) | - | - |
+
+The Rust bi-encoder reproduces the PyTorch arm exactly: F1 0.9618 both, precision 1.0, recall
+0.9265; the pooled embedding differs by 2e-7 per component. On real clone pairs the sentence
+encoder is 0.286 F1 better and 3.7x faster per pair, and its embeddings are cacheable, so the
+per-comparison cost after the first encode is a dot product.
+
+On the synthetic near-miss corpus (rename plus one operator mutation) both arms collapse to
+F1 ~0.69: pooled sentence vectors lose the single-token difference, and the Laya checkpoint was
+never trained on code. That slice is the actual gray zone `engram` needs, so the model choice is
+not settled by BigCloneBench alone.
+
+`jiekeshi/CodeBERT-3MB-Clone-Detection` was not run: the release ships a 3 MB checkpoint with a
+1000-token vocabulary but not the `BPE_1000` tokenizer that produced it, so its inputs cannot be
+reproduced from public artifacts.
+
 ### Why 10 ms is out of reach on candle
 
 Two independent reviews were run because the latency gate was failing.

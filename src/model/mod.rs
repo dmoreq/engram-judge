@@ -15,11 +15,17 @@ use crate::error::{Error, Result};
 use encoder::Encoder;
 use head::{DecisionHead, Scorer};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pooling {
+    Cls,
+    Mean,
+}
+
 pub struct LayaModel {
     encoder: Encoder,
-    head: DecisionHead,
-    scorer: Scorer,
-    type_emb: Embedding,
+    head: Option<DecisionHead>,
+    scorer: Option<Scorer>,
+    type_emb: Option<Embedding>,
     config: ModelConfig,
     device: Device,
     device_name: &'static str,
@@ -51,16 +57,22 @@ impl LayaModel {
         let vb = VarBuilder::from_tensors(tensors, dtype, &device);
         let hidden = config.encoder.hidden_size;
         let eps = config.encoder.layer_norm_eps;
-        let encoder = Encoder::load(vb.clone(), &config.encoder)?;
-        let head = DecisionHead::load(
-            vb.clone(),
-            config.meta.head_layers,
-            hidden,
-            config.encoder.num_attention_heads,
-            eps,
-        )?;
-        let scorer = Scorer::load(vb.clone(), hidden, eps)?;
-        let type_emb = candle_nn::embedding(3, hidden, vb.pp("type_emb"))?;
+        let encoder = Encoder::load(vb.clone(), &config.encoder, config.prefix())?;
+        let (head, scorer, type_emb) = if config.has_head() {
+            (
+                Some(DecisionHead::load(
+                    vb.clone(),
+                    config.meta.head_layers,
+                    hidden,
+                    config.encoder.num_attention_heads,
+                    eps,
+                )?),
+                Some(Scorer::load(vb.clone(), hidden, eps)?),
+                Some(candle_nn::embedding(3, hidden, vb.pp("type_emb"))?),
+            )
+        } else {
+            (None, None, None)
+        };
         Ok(Self {
             encoder,
             head,
@@ -96,8 +108,42 @@ impl LayaModel {
         self.config.encoder.hidden_size
     }
 
+    pub fn pooling(&self) -> Pooling {
+        match self.config.meta.pooling.as_deref() {
+            Some("mean") => Pooling::Mean,
+            _ => Pooling::Cls,
+        }
+    }
+
+    pub fn has_head(&self) -> bool {
+        self.head.is_some()
+    }
+
+    /// Pooled, L2-normalised sentence vector for the bi-encoder path.
+    pub fn embed(&mut self, ids: &[u32]) -> Result<Vec<f32>> {
+        if ids.is_empty() {
+            return Err(Error::Input("empty token sequence".to_string()));
+        }
+        let token_ids = Tensor::from_slice(ids, (1, ids.len()), &self.device)?;
+        let hidden = self.encoder.forward(&token_ids)?;
+        let batch = hidden.get(0)?;
+        let pooled = match self.pooling() {
+            Pooling::Cls => batch.get(0)?,
+            Pooling::Mean => batch.mean(0)?,
+        };
+        let pooled = pooled.to_dtype(DType::F32)?.to_vec1::<f32>()?;
+        let norm = pooled.iter().map(|v| v * v).sum::<f32>().sqrt().max(1e-12);
+        Ok(pooled.iter().map(|v| v / norm).collect())
+    }
+
     /// Raw `noul` logits for one sequence: `(1, markers)` reduced to `markers.len()` values.
     pub fn logits(&mut self, ids: &[u32], markers: &[usize]) -> Result<Vec<f32>> {
+        let (Some(head), Some(scorer), Some(type_emb)) = (&self.head, &self.scorer, &self.type_emb)
+        else {
+            return Err(Error::Model(
+                "checkpoint has no decision head; use the similarity command".to_string(),
+            ));
+        };
         if ids.is_empty() {
             return Err(Error::Input("empty token sequence".to_string()));
         }
@@ -108,13 +154,13 @@ impl LayaModel {
         let token_ids = Tensor::from_slice(ids, (1, seq), &self.device)?;
         let mut hidden = self.encoder.forward(&token_ids)?;
         let qtype = Tensor::from_slice(&[self.config.meta.qtype_noul], (1,), &self.device)?;
-        let type_vector = self.type_emb.forward(&qtype)?.unsqueeze(1)?;
+        let type_vector = type_emb.forward(&qtype)?.unsqueeze(1)?;
         hidden = hidden.broadcast_add(&type_vector)?.contiguous()?;
-        let hidden = self.head.forward(&hidden)?;
+        let hidden = head.forward(&hidden)?;
         let marker_ids: Vec<u32> = markers.iter().map(|m| *m as u32).collect();
         let index = Tensor::from_slice(&marker_ids, marker_ids.len(), &self.device)?;
         let selected = hidden.index_select(&index, 1)?;
-        let logits = self.scorer.forward(&selected)?;
+        let logits = scorer.forward(&selected)?;
         let rows: Vec<Vec<f32>> = logits.to_dtype(DType::F32)?.to_vec2()?;
         Ok(rows.into_iter().next().unwrap_or_default())
     }

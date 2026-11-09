@@ -128,6 +128,10 @@ impl Judge {
         self.model.checkpoint()
     }
 
+    pub fn has_head(&self) -> bool {
+        self.model.has_head()
+    }
+
     pub fn hidden_size(&self) -> usize {
         self.model.hidden_size()
     }

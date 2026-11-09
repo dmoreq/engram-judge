@@ -110,6 +110,12 @@ pub struct LazyMeta {
     pub temperature: [f32; 3],
     #[serde(default = "default_qtype_noul")]
     pub qtype_noul: u32,
+    /// Weight prefix in `model.safetensors`: `encoder` for Laya, `model` for a plain ModernBERT.
+    #[serde(default)]
+    pub weight_prefix: Option<String>,
+    /// `cls` or `mean` pooling for the bi-encoder path.
+    #[serde(default)]
+    pub pooling: Option<String>,
 }
 
 fn default_head_layers() -> usize {
@@ -152,6 +158,14 @@ impl ModelConfig {
             )));
         }
         Ok(Self { encoder, meta })
+    }
+
+    pub fn prefix(&self) -> &str {
+        self.meta.weight_prefix.as_deref().unwrap_or("encoder")
+    }
+
+    pub fn has_head(&self) -> bool {
+        self.meta.head_layers > 0
     }
 
     pub fn temperature_noul(&self) -> f32 {

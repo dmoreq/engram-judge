@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde_json::json;
 
 use crate::bench;
+use crate::bi_encoder::BiEncoder;
 use crate::cli::{Cli, Command};
 use crate::corpus;
 use crate::device::DevicePreference;
@@ -41,6 +42,13 @@ pub fn run(cli: Cli) -> Result<()> {
                 recipe.threshold = Some(*value);
             }
         }
+        Command::Similarity { threshold, .. } => {
+            let threshold = threshold.or(recipe.threshold).unwrap_or(0.5);
+            return similarity_command(&model_dir, preference, dtype, &cli.command, threshold);
+        }
+        Command::Embed { .. } => {
+            return embed_command(&model_dir, preference, dtype, &cli.command);
+        }
         Command::Bench { .. } => {}
     }
     // Read and validate caller input before touching the 644 MB checkpoint: a malformed
@@ -69,7 +77,18 @@ pub fn run(cli: Cli) -> Result<()> {
     } = &cli.command
     {
         let pairs = corpus::load(corpus)?;
-        let report = bench::run(&mut judge, &pairs, *iterations, *threshold)?;
+        let report = if judge.has_head() {
+            bench::run(&mut judge, &pairs, *iterations, *threshold)?
+        } else {
+            let mut encoder = BiEncoder::load(
+                &model_dir,
+                preference,
+                dtype,
+                threshold.or(recipe.threshold).unwrap_or(0.5),
+                512,
+            )?;
+            bench::run_bi(&mut encoder, &pairs, *iterations, *threshold)?
+        };
         println!("{}", serde_json::to_string(&report)?);
         return Ok(());
     }
@@ -109,10 +128,71 @@ fn judge_inputs(command: &Command) -> Result<(Question, String, String, bool)> {
             checked(&first, &second)?;
             Ok((Question::Supersede, first, second, *with_logits))
         }
-        Command::DeviceInfo | Command::Bench { .. } => {
+        Command::DeviceInfo
+        | Command::Bench { .. }
+        | Command::Similarity { .. }
+        | Command::Embed { .. } => {
             unreachable!("not a judge command")
         }
     }
+}
+
+fn similarity_command(
+    dir: &Path,
+    preference: DevicePreference,
+    dtype: candle_core::DType,
+    command: &Command,
+    threshold: f32,
+) -> Result<()> {
+    let Command::Similarity {
+        text_a,
+        text_b,
+        text_a_file,
+        text_b_file,
+        max_len,
+        ..
+    } = command
+    else {
+        unreachable!("similarity_command called with another subcommand")
+    };
+    let (first, second) = read_pair(text_a, text_b, text_a_file, text_b_file, "text")?;
+    checked(&first, &second)?;
+    let mut encoder = BiEncoder::load(dir, preference, dtype, threshold, *max_len)?;
+    let verdict = encoder.similarity(&first, &second)?;
+    println!("{}", serde_json::to_string(&verdict)?);
+    Ok(())
+}
+
+fn embed_command(
+    dir: &Path,
+    preference: DevicePreference,
+    dtype: candle_core::DType,
+    command: &Command,
+) -> Result<()> {
+    let Command::Embed {
+        text,
+        text_file,
+        max_len,
+    } = command
+    else {
+        unreachable!("embed_command called with another subcommand")
+    };
+    let value = read_one(text, text_file, "text")?;
+    if value.trim().is_empty() {
+        return Err(Error::Input("the text is empty".to_string()));
+    }
+    let mut encoder = BiEncoder::load(dir, preference, dtype, 0.5, *max_len)?;
+    let embedding = encoder.embed(&value)?;
+    println!(
+        "{}",
+        json!({
+            "dim": embedding.len(),
+            "device": encoder.device_name(),
+            "checkpoint": encoder.checkpoint(),
+            "embedding": embedding,
+        })
+    );
+    Ok(())
 }
 
 fn device_info(dir: &Path, preference: DevicePreference, recipe: &Recipe) -> Result<()> {

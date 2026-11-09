@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
+use crate::bi_encoder::BiEncoder;
 use crate::corpus::Pair;
 use crate::error::Result;
 use crate::judge::Judge;
@@ -84,6 +85,57 @@ pub fn run(
         f1,
         accuracy,
         ece: ece(&rows, 15),
+        rows,
+    })
+}
+
+pub fn run_bi(
+    encoder: &mut BiEncoder,
+    pairs: &[Pair],
+    iterations: usize,
+    threshold: Option<f32>,
+) -> Result<BenchReport> {
+    let threshold = threshold.unwrap_or_else(|| encoder.threshold());
+    let iterations = iterations.max(1);
+    if let Some(first) = pairs.first() {
+        encoder.similarity(&first.a, &first.b)?;
+    }
+    let mut latencies = Vec::with_capacity(pairs.len() * iterations);
+    let mut rows = Vec::with_capacity(pairs.len());
+    for iteration in 0..iterations {
+        for pair in pairs {
+            let started = Instant::now();
+            let verdict = encoder.similarity(&pair.a, &pair.b)?;
+            latencies.push(started.elapsed().as_secs_f64() * 1000.0);
+            if iteration == 0 {
+                rows.push(Row {
+                    label: pair.label,
+                    probability: verdict.similarity,
+                    logits: Vec::new(),
+                });
+            }
+        }
+    }
+    let mut sorted = latencies.clone();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mean_ms = latencies.iter().sum::<f64>() / latencies.len().max(1) as f64;
+    let (precision, recall, f1, accuracy) = classification(&rows, threshold);
+    Ok(BenchReport {
+        cases: pairs.len(),
+        iterations,
+        device: encoder.device_name(),
+        calibrated: false,
+        threshold,
+        p50_ms: round1(percentile(&sorted, 50.0)),
+        p95_ms: round1(percentile(&sorted, 95.0)),
+        p99_ms: round1(percentile(&sorted, 99.0)),
+        mean_ms: round1(mean_ms),
+        max_ms: round1(*sorted.last().unwrap_or(&0.0)),
+        precision,
+        recall,
+        f1,
+        accuracy,
+        ece: 0.0,
         rows,
     })
 }

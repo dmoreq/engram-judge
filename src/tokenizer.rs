@@ -83,6 +83,18 @@ impl PromptTokenizer {
         Ok(encoding.get_ids().to_vec())
     }
 
+    /// BERT-style encoding for the bi-encoder path: `[CLS] tokens [SEP]`, truncated to `max_len`.
+    pub fn encode_with_specials(&self, text: &str, max_len: usize) -> Result<Vec<u32>> {
+        let mut ids = self.encode(text)?;
+        ids.truncate(max_len.saturating_sub(2).max(1));
+        let mut out = Vec::with_capacity(ids.len() + 2);
+        out.push(self.cls_id);
+        out.extend(ids);
+        out.push(self.sep_id);
+        out.truncate(max_len);
+        Ok(out)
+    }
+
     /// Strip the mask token from user text, exactly as the reference implementation does.
     pub fn sanitize(&self, text: &str) -> String {
         if self.mask_token.is_empty() {
