@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Score a corpus with the PyTorch reference checkpoint (the Laya-FP16 baseline).
 
-Prints the same metric block `eg-laya bench` prints, so `scripts/keep_gate.py` can compare the
+Prints the same metric block `eg-judge bench` prints, so `scripts/keep_gate.py` can compare the
 two numerically without translating schemas.
 
 Usage:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a matrix of `eg-laya bench` reports into the optimization benchmark table.
+"""Turn a matrix of `eg-judge bench` reports into the optimization benchmark table.
 
 Reads `.tmp/matrix/<variant>_<corpus>.json`, measures each checkpoint's disk size, and writes
 `docs/reports/2026-11-09_owl-optimization-benchmark.md`.
@@ -142,7 +142,7 @@ def main() -> int:
                  "and Metal `sdpa` for unmasked global layers. Copying `laya-candle`'s custom "
                  "Metal kernels would require `unsafe` FFI, which this repository's hygiene gate "
                  "forbids in `src/`.")
-    lines.append("- Command per row: `eg-laya bench --model .models/<variant> --corpus "
+    lines.append("- Command per row: `eg-judge bench --model .models/<variant> --corpus "
                  "tests/corpus/<corpus>.jsonl --iterations 1 --device metal --dtype f16`.")
     lines.append("")
 

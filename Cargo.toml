@@ -1,18 +1,18 @@
 [package]
-name = "engram-laya"
-version = "0.1.0"
+name = "engram-judge"
+version = "1.0.0"
 edition = "2021"
-description = "Native Rust Laya proposition-head judge for engram gray-zone verdicts."
+description = "Offline semantic judge for engram gray-zone reuse and memory verdicts."
 license = "MIT OR Apache-2.0"
 publish = false
 rust-version = "1.90"
 
 [lib]
-name = "engram_laya"
+name = "engram_judge"
 path = "src/lib.rs"
 
 [[bin]]
-name = "eg-laya"
+name = "eg-judge"
 path = "src/main.rs"
 
 [dependencies]

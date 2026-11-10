@@ -1,4 +1,5 @@
-//! `eg-laya`: native Laya `noul` judge for engram.
+//! `eg-judge`: offline semantic judge for engram banked on a local bi-encoder or
+//! proposition-head checkpoint.
 
 pub mod bench;
 pub mod bi_encoder;

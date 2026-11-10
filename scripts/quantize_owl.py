@@ -8,7 +8,7 @@ Layout produced (safetensors):
 - INT4: `name.q4` (U8, two signed nibbles per byte, low nibble first) + `name.scale`
   (F32, one per group of 64 columns); norms and 1-D tensors stay F16.
 
-`eg-laya` dequantises at load time, so disk drops while resident memory stays at the F16 floor.
+`eg-judge` dequantises at load time, so disk drops while resident memory stays at the F16 floor.
 
 Usage:
     .venv/bin/python scripts/quantize_owl.py --model .models/owl --formats fp16,int8,int4

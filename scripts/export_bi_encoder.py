@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wrap a plain ModernBERT/sentence-encoder checkout into the layout `eg-laya embed` loads.
+"""Wrap a plain ModernBERT/sentence-encoder checkout into the layout `eg-judge embed` loads.
 
 The judge layout expects `encoder/config.json`, `tokenizer/`, `model.safetensors` with Laya's
 `encoder.*` prefixes. A public sentence-encoder ships `config.json`, `tokenizer.json` and a

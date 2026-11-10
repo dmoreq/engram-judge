@@ -1,6 +1,6 @@
 //! ModernBERT encoder forward pass (mmBERT-base / ModernBERT-large compatible).
 //!
-//! Scope: batch of one, no padding. `eg-laya` judges a single pair per call, so the global
+//! Scope: batch of one, no padding. `eg-judge` judges a single pair per call, so the global
 //! mask is always all-ones and only the sliding-window band is materialised. That keeps the
 //! kernel path identical for every layer count and avoids a `(seq, seq)` mask for the 22
 //! layers whose attention is global.

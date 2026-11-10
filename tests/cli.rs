@@ -6,7 +6,7 @@
 use std::process::{Command, Stdio};
 
 fn binary() -> &'static str {
-    env!("CARGO_BIN_EXE_eg-laya")
+    env!("CARGO_BIN_EXE_eg-judge")
 }
 
 #[test]
@@ -30,7 +30,7 @@ fn missing_model_exits_six() {
             "fn b() {}",
         ])
         .arg("--model")
-        .arg("/nonexistent/eg-laya-model")
+        .arg("/nonexistent/eg-judge-model")
         .output()
         .expect("run");
     assert_eq!(output.status.code(), Some(6));
@@ -41,7 +41,7 @@ fn missing_model_exits_six() {
 #[test]
 fn empty_stdin_exits_one() {
     let output = Command::new(binary())
-        .args(["judge-duplicate", "--model", "/nonexistent/eg-laya-model"])
+        .args(["judge-duplicate", "--model", "/nonexistent/eg-judge-model"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -76,7 +76,7 @@ fn bad_threshold_is_input_error() {
             "1.5",
         ])
         .arg("--model")
-        .arg("/nonexistent/eg-laya-model")
+        .arg("/nonexistent/eg-judge-model")
         .output()
         .expect("run");
     assert_eq!(output.status.code(), Some(1));

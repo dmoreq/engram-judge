@@ -1,7 +1,7 @@
-# eg-laya: latency ceiling and model selection
+# eg-judge: latency ceiling and model selection
 
 Date: 2026-11-09
-Revision: `34f504d` plus this report (repo `engram-laya`)
+Revision: `34f504d` plus this report (repo `engram-judge`)
 
 ## TL;DR
 
@@ -20,7 +20,7 @@ Two corpora, both labelled, both reproducible from the repo:
 | `tests/corpus/bigclonebench_400.jsonl` | 400 | 204 | real Java clones from the CodeXGLUE BigCloneBench test split |
 | `tests/corpus/pairs.jsonl` (first 200 used for cross-model rows) | 200 | 102 | near-miss: rename/comment-only positives, single-operator mutations as negatives |
 
-Machine: arm64 Apple Silicon, macOS, candle 0.11.1 with Metal F16 for Rust rows, PyTorch 2.15 + transformers 5.22 for reference rows. Rust latency is in-process (`eg-laya bench`), so model load is excluded; a one-shot CLI call adds ~645 ms of weight loading.
+Machine: arm64 Apple Silicon, macOS, candle 0.11.1 with Metal F16 for Rust rows, PyTorch 2.15 + transformers 5.22 for reference rows. Rust latency is in-process (`eg-judge bench`), so model load is excluded; a one-shot CLI call adds ~645 ms of weight loading.
 
 Every reference row was cross-checked against the Rust engine where the architecture is implemented:
 
@@ -44,7 +44,7 @@ Every reference row was cross-checked against the Rust engine where the architec
 
 Rows measured with cross-encoder, siamese and bi-encoder evaluators plus `scripts/eval_token_diff.py`
 (the cross-encoder and siamese evaluators, and every checkpoint except `owl-int4`, were removed after
-the study; the weights are public and the measurements stand); Rust rows with `eg-laya bench`. Threshold 0.5 unless the row states otherwise; best-threshold F1 is in the cited JSON under `.tmp/`.
+the study; the weights are public and the measurements stand); Rust rows with `eg-judge bench`. Threshold 0.5 unless the row states otherwise; best-threshold F1 is in the cited JSON under `.tmp/`.
 
 ### Runtime comparison, same checkpoint
 
@@ -149,17 +149,17 @@ Failure: without a real gray-zone corpus there is nothing to distil from, and th
 .venv/bin/python scripts/fetch_bigclonebench.py
 
 # Rust arms (re-download a checkpoint first with scripts/export_laya.py or export_bi_encoder.py)
-# target/release/eg-laya bench --model .models/laya-multilingual --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
+# target/release/eg-judge bench --model .models/laya-multilingual --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
 
 # bi-encoder arm that ships
-target/release/eg-laya bench --model .models/owl-int4 --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
+target/release/eg-judge bench --model .models/owl-int4 --corpus tests/corpus/bigclonebench_400.jsonl --iterations 1 --device metal --dtype f16
 .venv/bin/python scripts/eval_owl.py --model .models/owl-int4 --corpus tests/corpus/bigclonebench_400.jsonl
 
 # tier-0 baseline
 .venv/bin/python scripts/eval_token_diff.py --corpus tests/corpus/pairs.jsonl --limit 200
 
 # parity
-EG_LAYA_MODEL=.models/owl-int4 target/release/eg-laya embed --text "fn a() {}" --model .models/owl-int4
+EG_JUDGE_MODEL=.models/owl-int4 target/release/eg-judge embed --text "fn a() {}" --model .models/owl-int4
 ```
 
 ## Files

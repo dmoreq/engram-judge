@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a Laya checkpoint into the layout `eg-laya` loads, plus golden fixtures.
+"""Export a Laya checkpoint into the layout `eg-judge` loads, plus golden fixtures.
 
 Offline development tool. Runtime never imports this module; the Rust binary reads only
 `model.safetensors`, `encoder/config.json`, `tokenizer/tokenizer.json` and `lazy.json`.

@@ -225,7 +225,7 @@ fn resolve_model_dir(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = explicit {
         return Ok(dir);
     }
-    if let Ok(dir) = std::env::var("EG_LAYA_MODEL") {
+    if let Ok(dir) = std::env::var("EG_JUDGE_MODEL") {
         if !dir.is_empty() {
             return Ok(PathBuf::from(dir));
         }
@@ -234,7 +234,7 @@ fn resolve_model_dir(explicit: Option<PathBuf>) -> Result<PathBuf> {
         .map_err(|_| Error::Input("HOME is unset; pass --model".to_string()))?;
     Ok(PathBuf::from(home)
         .join(".engram")
-        .join("laya")
+        .join("judge")
         .join("model"))
 }
 

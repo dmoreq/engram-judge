@@ -49,7 +49,7 @@ dyn-stack
 dyn-stack-macros
 either
 encode_unicode
-engram-laya
+engram-judge
 enum-as-inner
 equivalent
 errno

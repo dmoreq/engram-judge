@@ -5,14 +5,14 @@
 //! by `laya` 0.4.30 on the same checkpoint. This test rebuilds the prompt with the Rust
 //! tokenizer, runs the Rust encoder + head, and requires the probabilities to agree.
 //!
-//! Gated on `EG_LAYA_MODEL` because the 644 MB checkpoint is not tracked: `cargo test` stays
+//! Gated on `EG_JUDGE_MODEL` because the 644 MB checkpoint is not tracked: `cargo test` stays
 //! green on a clean clone, and the parity gate runs where the weights live.
 
 use std::path::PathBuf;
 
-use engram_laya::config::ModelConfig;
-use engram_laya::model::LayaModel;
-use engram_laya::tokenizer::{
+use engram_judge::config::ModelConfig;
+use engram_judge::model::LayaModel;
+use engram_judge::tokenizer::{
     noul_options, PromptTokenizer, DEFAULT_HEAD_MAX_LEN, DEFAULT_MAX_LEN,
 };
 
@@ -30,7 +30,7 @@ struct GoldenRow {
 }
 
 fn fixture_path() -> PathBuf {
-    let name = std::env::var("EG_LAYA_FIXTURES")
+    let name = std::env::var("EG_JUDGE_FIXTURES")
         .unwrap_or_else(|_| "golden_laya_multilingual.jsonl".to_string());
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
@@ -40,10 +40,10 @@ fn fixture_path() -> PathBuf {
 
 #[test]
 fn prompt_layout_matches_reference() {
-    let model_dir = match std::env::var("EG_LAYA_MODEL") {
+    let model_dir = match std::env::var("EG_JUDGE_MODEL") {
         Ok(dir) => PathBuf::from(dir),
         Err(_) => {
-            eprintln!("skipping parity: EG_LAYA_MODEL is unset");
+            eprintln!("skipping parity: EG_JUDGE_MODEL is unset");
             return;
         }
     };
@@ -81,10 +81,10 @@ fn prompt_layout_matches_reference() {
 
 #[test]
 fn probabilities_match_reference() {
-    let model_dir = match std::env::var("EG_LAYA_MODEL") {
+    let model_dir = match std::env::var("EG_JUDGE_MODEL") {
         Ok(dir) => PathBuf::from(dir),
         Err(_) => {
-            eprintln!("skipping parity: EG_LAYA_MODEL is unset");
+            eprintln!("skipping parity: EG_JUDGE_MODEL is unset");
             return;
         }
     };
@@ -111,8 +111,9 @@ fn probabilities_match_reference() {
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let row: GoldenRow = serde_json::from_str(line).expect("fixture row");
         let logits = model.logits(&row.input_ids, &row.markers).expect("logits");
-        let probability = engram_laya::model::probability_true(&logits, f64::from(row.temperature))
-            .expect("prob");
+        let probability =
+            engram_judge::model::probability_true(&logits, f64::from(row.temperature))
+                .expect("prob");
         let reference = row.probs[1];
         let delta = (probability - reference).abs();
         if delta > worst {

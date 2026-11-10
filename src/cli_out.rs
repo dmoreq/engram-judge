@@ -1,6 +1,6 @@
 //! The single audited writer in the runtime.
 //!
-//! `eg-laya bench --out FILE` is an explicit, user-supplied output path; nothing else in the
+//! `eg-judge bench --out FILE` is an explicit, user-supplied output path; nothing else in the
 //! binary writes to disk. Keeping the primitive here lets `tests/scripts/write_path_check.sh`
 //! enforce that no other module gains a write.
 

@@ -56,7 +56,7 @@ impl DeviceChoice {
                 name: "metal",
             }),
             Err(err) => {
-                eprintln!("eg-laya: Metal unavailable ({err}); continuing on CPU");
+                eprintln!("eg-judge: Metal unavailable ({err}); continuing on CPU");
                 None
             }
         }
@@ -64,7 +64,7 @@ impl DeviceChoice {
 
     #[cfg(not(target_os = "macos"))]
     fn metal_or_warn() -> Option<Self> {
-        eprintln!("eg-laya: Metal support is not compiled in; continuing on CPU");
+        eprintln!("eg-judge: Metal support is not compiled in; continuing on CPU");
         None
     }
 }

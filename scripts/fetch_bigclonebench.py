@@ -28,7 +28,7 @@ PAGE = 100
 
 def fetch(offset: int) -> list[dict]:
     url = f"{BASE}&offset={offset}&length={PAGE}"
-    request = urllib.request.Request(url, headers={"User-Agent": "engram-laya-research"})
+    request = urllib.request.Request(url, headers={"User-Agent": "engram-judge-research"})
     with urllib.request.urlopen(request, timeout=90) as response:
         return [row["row"] for row in json.load(response)["rows"]]
 

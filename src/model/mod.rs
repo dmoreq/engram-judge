@@ -1,4 +1,4 @@
-//! Checkpoint loader and the single forward pass `eg-laya` needs.
+//! Checkpoint loader and the single forward pass `eg-judge` needs.
 
 pub mod encoder;
 pub mod head;

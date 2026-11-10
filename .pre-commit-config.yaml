@@ -1,5 +1,5 @@
 # .pre-commit-config.yaml
-# engram-laya pre-commit and pre-push hooks, inherited from `engram`:
+# engram-judge pre-commit and pre-push hooks, inherited from `engram`:
 # formatting, dependency allowlist, leakage/emoji/LOC gates, and the full test suite on push.
 
 minimum_pre_commit_version: "3.2.0"

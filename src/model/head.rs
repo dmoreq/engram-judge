@@ -4,7 +4,7 @@
 //! sequence, then a per-marker scorer turns each `[MASK]` position into one logit. Softmax over
 //! the two markers of a `noul` question is the probability of "true".
 //!
-//! `act_head` is deliberately absent: it only feeds the act/escalate decision that `eg-laya`
+//! `act_head` is deliberately absent: it only feeds the act/escalate decision that `eg-judge`
 //! never reports.
 
 use candle_core::{Result as CResult, Tensor, D};

@@ -6,13 +6,13 @@ use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "eg-laya",
+    name = "eg-judge",
     version,
-    about = "Offline Laya proposition-head judge for engram anti-reinvention and memory verdicts"
+    about = "Offline semantic judge for engram anti-reinvention and memory verdicts"
 )]
 pub struct Cli {
-    /// Checkpoint directory (default: $EG_LAYA_MODEL, else ~/.engram/laya/model)
-    #[arg(long, global = true, value_name = "DIR", env = "EG_LAYA_MODEL")]
+    /// Checkpoint directory (default: $EG_JUDGE_MODEL, else ~/.engram/judge/model)
+    #[arg(long, global = true, value_name = "DIR", env = "EG_JUDGE_MODEL")]
     pub model: Option<PathBuf>,
     /// Execution device
     #[arg(

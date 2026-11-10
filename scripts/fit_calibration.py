@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fit temperature scaling and a decision threshold, then score on a held-out half.
 
-Input is the `eg-laya bench` report, which carries the raw two-option logits per pair. Fitting and
+Input is the `eg-judge bench` report, which carries the raw two-option logits per pair. Fitting and
 scoring use different halves so the reported ECE and F1 are out of sample.
 
 Plan section 2.2 asks for temperature scaling before any retraining decision, and for a threshold
@@ -103,7 +103,7 @@ def main() -> int:
         report = json.load(fh)
     rows = [row for row in report["rows"] if len(row.get("logits", [])) >= 2]
     if len(rows) < 20:
-        print("not enough rows with logits; rerun eg-laya bench", file=sys.stderr)
+        print("not enough rows with logits; rerun eg-judge bench", file=sys.stderr)
         return 1
     split = int(len(rows) * (1.0 - args.holdout_fraction))
     fit_rows, holdout = rows[:split], rows[split:]

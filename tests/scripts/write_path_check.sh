@@ -14,7 +14,7 @@ check() { # dir -> prints violations
 import pathlib, re, sys
 src = pathlib.Path(sys.argv[1])
 prim = re.compile(r"fs::write|fs::rename|OpenOptions|File::create|File::create_new|File::options|fs::copy|remove_file|remove_dir|create_dir|create_dir_all")
-# engram-laya has no .engram store; the only runtime writer is the explicit
+# engram-judge has no .engram store; the only runtime writer is the explicit
 # `bench --out FILE` helper.
 allowed = {"cli_out.rs"}
 bad = []

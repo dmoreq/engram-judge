@@ -1,7 +1,7 @@
-# Báo cáo thu hoạch: triển khai `engram-laya` và tích hợp `eg reuse --judge`
+# Báo cáo thu hoạch: triển khai `engram-judge` và tích hợp `eg reuse --judge`
 
 Ngày: 2026-11-10
-Phạm vi: `engram-laya` (repo mới, 7 commit) và `engram` (`ec32038`)
+Phạm vi: `engram-judge` (repo mới, 7 commit) và `engram` (`ec32038`)
 
 ## TL;DR
 
@@ -11,7 +11,7 @@ Kế hoạch đặt ba mục tiêu định lượng: model ≤ 220 MB, p95 ≤ 1
 
 | Hạng mục | Trạng thái | Bằng chứng |
 | --- | --- | --- |
-| Repo `engram-laya`, binary `eg-laya` | Xong | 7 commit, 51 file theo dõi, 5.085 dòng Rust + Python |
+| Repo `engram-judge`, binary `eg-judge` | Xong | 7 commit, 51 file theo dõi, 5.085 dòng Rust + Python |
 | ModernBERT encoder + noul head trong Candle | Xong | parity 1e-6 với PyTorch |
 | Hỗ trợ 3 checkpoint | Xong | `laya-multilingual`, `laya` (ModernBERT-large), Owl bi-encoder |
 | Lượng tử hoá FP16 / INT8 / INT4-group64 | Xong | 607 MB → 85.4 MB |
@@ -36,7 +36,7 @@ Mốc so sánh runtime, cùng checkpoint, cùng corpus:
 | Runtime | pairs 500 p50 / p95 | BCB p50 / p95 | F1 |
 | --- | ---: | ---: | ---: |
 | `b0xtch/laya-candle` | **29.0 / 37.0 ms** | **121.8 / 125.2 ms** | 0.7084 / 0.6755 |
-| `eg-laya` (repo này) | 79.7 / 120.3 ms | 544.9 / 604.4 ms | 0.7084 / 0.6755 |
+| `eg-judge` (repo này) | 79.7 / 120.3 ms | 544.9 / 604.4 ms | 0.7084 / 0.6755 |
 | `laya-mlx` 0.6.0 | 81.6 / 135.3 ms | 189.0 / 3043.7 ms | 0.7027 / 0.6734 |
 
 ## Bài học kỹ thuật
@@ -49,7 +49,7 @@ Mốc so sánh runtime, cùng checkpoint, cùng corpus:
 
 **4. Chất lượng phụ thuộc phân phối hơn model.** Cùng một bi-encoder: 0.962 trên clone thật, 0.689 trên near-miss một-token. Vector gộp xoá mất khác biệt cần thiết. Không model nào đã thử vượt 0.82 trên near-miss — và token-diff tất định đạt 0.8203 trong 0.03 ms.
 
-**5. Constraints đúng là thứ chặn đường nhanh nhất.** `laya-candle` nhanh hơn 4.5× nhờ kernel Metal tuỳ biến, nhưng cần FFI `unsafe` — invariant của `engram-laya` cấm. Đây là đánh đổi có ý thức, không phải thiếu sót kỹ thuật.
+**5. Constraints đúng là thứ chặn đường nhanh nhất.** `laya-candle` nhanh hơn 4.5× nhờ kernel Metal tuỳ biến, nhưng cần FFI `unsafe` — invariant của `engram-judge` cấm. Đây là đánh đổi có ý thức, không phải thiếu sót kỹ thuật.
 
 **6. Môi trường cũng là nguồn lỗi.** Hơn một giờ mất vào build treo do `target/debug/incremental` hỏng, chẩn đoán bằng `ps`/`sample`/`stat` (thấy `nlink = 65535`). Chẩn đoán ban đầu của tôi rằng APFS hỏng cả volume là sai: chỉ cần xoá `incremental`.
 
@@ -66,7 +66,7 @@ Nguyên nhân gốc: ~46.8 GFLOP/lượt ở 212 token. p95 10 ms đòi 4.7 TFLO
 
 ## Tích hợp vào `engram`
 
-`eg reuse --judge` gửi ứng viên overlap 45–75% sang `eg-laya`, tự chọn `similarity` hay `judge-duplicate` theo checkpoint. Tối đa 5 ứng viên/lần, timeout 15 s.
+`eg reuse --judge` gửi ứng viên overlap 45–75% sang `eg-judge`, tự chọn `similarity` hay `judge-duplicate` theo checkpoint. Tối đa 5 ứng viên/lần, timeout 15 s.
 
 Hợp đồng suy giảm: thiếu binary, thiếu checkpoint, timeout, hoặc output hỏng → stdout byte-identical với static, đúng một dòng `eg: judge:` ở stderr. Có test hồi quy chứng minh.
 
@@ -93,22 +93,22 @@ Ba hướng, chưa hướng nào được đo là đạt mục tiêu:
 
 | Đường dẫn | Nội dung |
 | --- | --- |
-| `engram-laya/docs/reports/2026-11-09_eg-laya-latency-model-selection.md` | So sánh model, runtime, third-party claims |
-| `engram-laya/docs/reports/2026-11-09_owl-optimization-benchmark.md` | Ma trận lượng tử hoá và cắt tầng |
-| `engram-laya/src/` | Encoder, head, bi-encoder, bench, judge |
+| `engram-judge/docs/reports/2026-11-09_eg-judge-latency-model-selection.md` | So sánh model, runtime, third-party claims |
+| `engram-judge/docs/reports/2026-11-09_owl-optimization-benchmark.md` | Ma trận lượng tử hoá và cắt tầng |
+| `engram-judge/src/` | Encoder, head, bi-encoder, bench, judge |
 | `engram/src/query/judge.rs` | Arbitration vùng xám |
 | `engram/tests/cli/reuse_judge.rs` | Test hợp đồng suy giảm |
 
 ## Kiểm chứng
 
 ```sh
-# engram-laya
+# engram-judge
 cargo test --locked && cargo clippy --all-targets -- -D warnings
-EG_LAYA_MODEL=.models/owl cargo test --release --test parity -- --nocapture
+EG_JUDGE_MODEL=.models/owl cargo test --release --test parity -- --nocapture
 
 # engram
 CARGO_INCREMENTAL=0 cargo test --locked   # 328 passed, 0 failed
 bash tests/scripts/hygiene_check.sh
 ```
 
-Snapshot: `engram` `ec32038`, `engram-laya` `6dc4a55`. Test chạy trên máy phát triển, một lần mỗi cấu hình.
+Snapshot: `engram` `ec32038`, `engram-judge` `6dc4a55`. Test chạy trên máy phát triển, một lần mỗi cấu hình.
