@@ -126,6 +126,7 @@ tests/
 
 - The bi-encoder loses single-token differences: near-miss F1 is 0.71 against 0.96 for real clones.
   `engram`'s deterministic detectors and its code graph resolve most of that band.
+- The first Metal call compiles kernels: a cold `similarity` takes ~9 s, warm calls ~40 ms.
 - Batch size is one; the encoder skips padding masks.
 - INT4 shrinks the file, not the arithmetic: weights are dequantised at load, so RSS stays at the
   F16 floor.
