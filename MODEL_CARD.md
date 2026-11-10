@@ -1,6 +1,6 @@
 ---
 language: code
-license: mit
+license: apache-2.0
 tags: [code, clone-detection, bi-encoder, modernbert, int4, engram]
 metrics: [f1]
 model-index:
@@ -44,12 +44,35 @@ eg-judge similarity --text-a "$A" --text-b "$B"
 `eg-judge embed --text "$A"` returns the pooled, L2-normalised vector so an index can cache one
 side and compare with a dot product.
 
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `model.safetensors` | INT4 group-64 weights: `*.q4` (packed nibbles) plus `*.scale` per group |
+| `encoder/config.json` | ModernBERT hyper-parameters |
+| `tokenizer/tokenizer.json` | BPE tokenizer, CLS pooling |
+| `lazy.json` | Runtime manifest: weight prefix, pooling mode, head layers |
+
+Load with `eg-judge similarity --model <this directory>`; the loader dequantises at load.
+
 ## Training data and provenance
 
 Fine-tuned by the checkpoint author on
 [BigCloneBench](https://huggingface.co/datasets/google/code_x_glue_cc_clone_detection_big_clone_bench)
 from the public sentence-transformer `Shuu12121/CodeCloneDetection-ModernBERT-Owl`. This repository
 only quantised it; no additional training was performed.
+
+The upstream checkpoint is Apache-2.0, so this derivative carries the same licence and its
+attribution below.
+
+```bibtex
+@misc{shuu12121_codernnclone_modernbert_owl,
+  title  = {CodeCloneDetection-ModernBERT-Owl},
+  author = {Shuu12121},
+  note   = {Sentence-Transformers checkpoint fine-tuned on BigCloneBench},
+  year   = {2025}
+}
+```
 
 ## Limits
 
