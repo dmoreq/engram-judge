@@ -10,7 +10,8 @@ no Python at runtime. One JSON line per call.
 
 ## Shipping artifact
 
-`.models/owl-int4`: a 12-layer ModernBERT bi-encoder quantised to INT4 group-64.
+`.models/owl-int4`: a 12-layer ModernBERT bi-encoder quantised to INT4 group-64. Published at
+[huggingface.co/DMoreQ/owl-int4](https://huggingface.co/DMoreQ/owl-int4).
 
 | Property | Value |
 | --- | --- |
@@ -26,7 +27,9 @@ was benchmarked has been removed and is reproducible from `scripts/`.
 ## Quick start
 
 ```sh
-export EG_JUDGE_MODEL="$(pwd)/.models/owl-int4"
+# from the Hub, or use the local .models/owl-int4
+hf download DMoreQ/owl-int4 --local-dir ~/.engram/judge/model
+export EG_JUDGE_MODEL=~/.engram/judge/model
 
 cargo run --release -- similarity \
     --text-a "fn total(x: &[i32]) -> i32 { x.iter().sum() }" \
